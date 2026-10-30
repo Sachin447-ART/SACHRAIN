@@ -30,4 +30,4 @@ jobs:
           fi
 
       - name: Run ZEALFIRE
-        run: python main.py
+        run: python edith.py
