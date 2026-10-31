@@ -36,7 +36,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install SpeechRecognition ollama
+          python -m pip install SpeechRecognition ollama pyaudio
 
       - name: Verify EDITH file
         run: |
