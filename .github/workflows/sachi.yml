@@ -36,12 +36,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          if [ -f requirements.txt ]; then
-            python -m pip install -r requirements.txt
-          else
-            echo "No requirements.txt found."
-            python -m pip install ollama
-          fi
+          python -m pip install SpeechRecognition ollama
 
       - name: Verify EDITH file
         run: |
