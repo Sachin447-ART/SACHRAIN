@@ -1,93 +1,134 @@
-import tkinter as tk
-from ollama import chat
-from tkinter import messagebox
-import speech_recognition as sr
-import threading
-from typing import Iterable
-import asyncio
-import pyaudio
+import os
 import socket
-from flask import Flask, render_template_string, request, redirect, url_for, abort, flash, send_file
-from pathlib import Path
-import sqlite3
-import os
-import shutil
-from typing import List, Optional
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-import uvicorn
-import os
-import shutil
-from typing import List, Optional
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-import uvicorn
-# Optional dependencies: the rest of EDITH can still open without these.
+import threading
+import time
+import tkinter as tk
+from tkinter import filedialog, messagebox
+
+# Optional dependencies
 try:
     import speech_recognition as sr
 except ImportError:
     sr = None
 
 try:
-    import ollama
+    from ollama import chat as ollama_chat
 except ImportError:
-    ollama = None
-# creating window
-root=tk.Tk()
+    ollama_chat = None
+
+try:
+    import pyaudio
+except ImportError:
+    pyaudio = None
+
+try:
+    import winsound
+except ImportError:
+    winsound = None
+
+try:
+    import subprocess
+except ImportError:
+    subprocess = None
+
+try:
+    from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
+    from fastapi.staticfiles import StaticFiles
+    from pydantic import BaseModel
+    import uvicorn
+except ImportError:
+    FastAPI = None
+    File = None
+    Form = None
+    HTTPException = None
+    UploadFile = None
+    status = None
+    StaticFiles = None
+    BaseModel = None
+    uvicorn = None
+
+
+def run_ollama_query(prompt: str) -> str:
+    if ollama_chat is None:
+        return "Ollama is not installed or not configured."
+    try:
+        response = ollama_chat(
+            model="gemma4",
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return response["message"]["content"]
+    except Exception as exc:
+        return f"Error while contacting Ollama: {exc}"
+
+
+root = tk.Tk()
 root.configure(bg="black")
 root.geometry("900x1080")
 root.title("EDITH")
-# home label
-label=tk.Label(root,text="HOME",fg="blue",bd=3,font=("Bold",20),justify="top",cursor="hand2")
-label.pack(side="left",ipadx=10,ipady=15)
-label.bind("<Button-1>",home_s)
-# upadate label
-y=tk.Label(root,text="UPDATE",fg="blue",bd=3,font=("Bold",20),justify="top",cursor="hand2")
-y.pack(side="left",ipadx=10,ipady=21)
-y.bind("<Button-1>",print_apps)
-# ZEALFIRE label
-z=tk.Label(root,text="ZEALFIRE",fg="blue",bd=3,font=("Bold",20),justify="top",cursor="hand2")
-z.pack(side="left",ipadx=10,ipady=24)
-z.bind("<Button-1>",zealfire)
-# call label
-a=tk.Label(root,text="CALL",fg="blue",bd=3,font=("Bold",20),justify="top",cursor="hand2")
-a.pack(side="left",ipadx=10,ipady=27)
-a.bind("<Button-1>",caller)
-# timer label
-b=tk.Label(root,text="TIMER",fg="blue",bd=3,font=("Bold",20),justify="top",cursor="hand2")
-b.pack(side="left",ipadx=10,ipady=30)
-b.bind("<Button-1>",timer)
-# watch label
-c=tk.Label(root,text="ENTERTAINMENT",fg="blue",bd=3,font=("Bold",20),justify="top",cursor="hand2")
-c.pack(side="left",ipadx=10,ipady=30)
-c.bind("<Button-1>",watch)
 
-def home_s(event):
-    # Input bar
-    bar=tk.Frame(
-        root,
+nav_frame = tk.Frame(root, bg="black")
+nav_frame.pack(side="top", fill="x", padx=10, pady=10)
+
+content_frame = tk.Frame(root, bg="#101010")
+content_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+
+def clear_content():
+    for widget in content_frame.winfo_children():
+        widget.destroy()
+
+
+def open_selected_file(label_widget):
+    file_path = filedialog.askopenfilename(
+        title="Select a file",
+        filetypes=[
+            ("All files", "*.*"),
+            ("Images", "*.png *.jpg *.jpeg *.gif"),
+            ("Documents", "*.pdf *.docx *.txt"),
+            ("Python files", "*.py"),
+        ],
+    )
+    if file_path:
+        label_widget.config(text=f"Selected: {file_path}")
+
+
+def home_s(event=None):
+    clear_content()
+
+    bar = tk.Frame(
+        content_frame,
         bg="#23CE3A",
         highlightbackground="#23CE3A",
-        highlightthickness=1
-        )
-    bar.place(x=20, y=30, width=800, height=55,anchor="s")
+        highlightthickness=1,
+    )
+    bar.pack(fill="x", pady=10)
 
-    # Plus button
+    selected_file_label = tk.Label(
+        content_frame,
+        text="No file selected",
+        bg="#303030",
+        fg="white",
+        wraplength=550,
+    )
+    selected_file_label.pack(pady=(0, 10))
+
     plus = tk.Button(
-        bar, text="⊕",
+        bar,
+        text="⊕",
         font=("Arial", 20),
-        bg="#16D626", fg="white",
+        bg="#16D626",
+        fg="white",
         activebackground="#941A1A",
         activeforeground="white",
-         bd=5
+        bd=5,
+        command=lambda: open_selected_file(selected_file_label),
     )
     plus.pack(side="left", padx=12)
-    plus.bind("<Button-1",print_plus)
-    #text input
-    sach=tk.Entry(
+
+    prompt_var = tk.StringVar(value="ASK EDITH:")
+    sach = tk.Entry(
         bar,
+        textvariable=prompt_var,
         font=("Arial", 13),
         bg="#202020",
         fg="white",
@@ -95,334 +136,188 @@ def home_s(event):
         relief="flat",
         bd=2,
     )
-    sach.insert(0,"ASK EDITH:")
     sach.pack(side="left", fill="both", expand=True, padx=5)
 
-    # Microphone button
-    mic = tk.Button(
-        bar,
-        bg="#16D626", fg="white",
-        text="\U0001F3A4",
-        font=("Arial", 14),
-        activebackground="#303030",
-        bd=0
-    )
-    mic.pack(side="left", padx=8)
-    mic.bind("<Button-1>",mic_button)
-    # Voice button
-    voice = tk.Button(
-        bar, text="⎆",
-        font=("Arial", 14, "bold"),
-        bg="#2875df", fg="white",
-        activebackground="#1b5fc0",
-        bd=0,
-        width=3,
-        height=1
-    )
-    voice.pack(side="right", padx=6, pady=5)
-    voice.bind("<Button-1>",voice_button)
-
-    def print_plus(event):
-        file_path = filedialog.askopenfilename(
-            title="Select a file",
-            filetypes=[
-                ("All files", "*.*"),
-                ("Images", "*.png *.jpg *.jpeg *.gif"),
-                ("Documents", "*.pdf *.docx *.txt"),
-                ("Python files", "*.py")
-            ]
-        )
-        if file_path:
-            filename_label.config(text="Selected: " + file_path)
-
-            # Add photos & files button
-            btn=tk.Button(
-            root,
-            text="♧  Add photos & files",
-            command=open_file,
-            bg="#16C210",
-            fg="white",
-            activebackground="#444444",
-            activeforeground="white",
-            font=("Arial", 12),
-            relief="flat",
-            cursor="hand2"
-        )
-        btn.pack(pady=25)
-        # Display selected file
-        filename_label = tk.Label(
-            root,
-            text="No file selected",
-            bg="#303030",
-            fg="white",
-            wraplength=550
-        )
-        filename_label.pack(pady=5)
-    #mia button
-    recognizer = sr.Recognizer()
-
-    def show_text(text):
-        entry.delete(0, tk.END)
-        entry.insert(0, text)
-        status.config(text="Speech recognized successfully!")
-
-    def listen():
-        mic_button.config(state="disabled")
-        status.config(text="Listening... Speak now!")
+    def mic_button_click():
+        if sr is None:
+            messagebox.showerror("Missing dependency", "speech_recognition is not installed.")
+            return
 
         def worker():
+            recognizer = sr.Recognizer()
             try:
                 with sr.Microphone() as source:
-                    recognizer.adjust_for_ambient_noise(
-                        source, duration=0.5
-                    )
-                    audio = recognizer.listen(
-                        source,
-                        timeout=5,
-                        phrase_time_limit=10
-                    )
-
-                text = recognizer.recognize_google(
-                    audio, language="en-IN"
-                )
-
-                root.after(0, lambda: show_text(text))
-
+                    recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                    audio = recognizer.listen(source, timeout=5, phrase_time_limit=10)
+                text = recognizer.recognize_google(audio, language="en-IN")
+                prompt_var.set(text)
             except sr.WaitTimeoutError:
-                root.after(
-                    0, lambda: status.config(
-                        text="No speech detected."
-                    )
-                )
-
+                messagebox.showinfo("EDITH", "No speech detected.")
             except sr.UnknownValueError:
-                root.after(
-                    0, lambda: status.config(
-                        text="Sorry, I couldn't understand."
-                    )
-                )
-
+                messagebox.showinfo("EDITH", "Sorry, I could not understand.")
             except sr.RequestError:
-                root.after(
-                    0, lambda: status.config(
-                        text="Check your internet connection."
-                    )
-                )
-
-            except Exception as e:
-                root.after(
-                    0, lambda: status.config(
-                        text=f"Error: {e}"
-                    )
-                )
-
-            finally:
-                root.after(
-                    0, lambda: mic_button.config(state="normal")
-                )
+                messagebox.showinfo("EDITH", "Check your internet connection.")
+            except Exception as exc:
+                messagebox.showerror("EDITH", f"Error: {exc}")
 
         threading.Thread(target=worker, daemon=True).start()
 
-    mic_button.config(command=listen)
+    mic = tk.Button(
+        bar,
+        text="🎤",
+        bg="#16D626",
+        fg="white",
+        font=("Arial", 14),
+        activebackground="#303030",
+        bd=0,
+        command=mic_button_click,
+    )
+    mic.pack(side="left", padx=8)
 
-    def voice_button(logprobs: Iterable[dict], label: str) -> None:
-        print(f"\n{label}:")
+    def run_query():
+        text = prompt_var.get().strip()
+        if not text or text == "ASK EDITH:":
+            messagebox.showinfo("EDITH", "Please type a question first.")
+            return
+        response = run_ollama_query(text)
+        messagebox.showinfo("EDITH", response)
 
-        for entry in logprobs:
-            token = entry.get("token", "")
-            logprob = entry.get("logprob")
+    voice = tk.Button(
+        bar,
+        text="⎆",
+        font=("Arial", 14, "bold"),
+        bg="#2875df",
+        fg="white",
+        activebackground="#1b5fc0",
+        bd=0,
+        width=3,
+        height=1,
+        command=run_query,
+    )
+    voice.pack(side="right", padx=6, pady=5)
 
-            if logprob is not None:
-                print(f"  token={token!r:<12} logprob={logprob:.3f}")
-            else:
-                print(f"  token={token!r:<12} logprob=N/A")
-
-            for alt in entry.get("top_logprobs", []):
-                if alt.get("token") != token:
-                    alt_logprob = alt.get("logprob")
-
-                    if alt_logprob is not None:
-                        print(
-                            f"    alt -> {alt['token']!r:<12} "
-                            f"({alt_logprob:.3f})"
-                        )
-
-
-    def sachi():
-        messages = [
-            {
-                "role": "user",
-                "content": str(sach.get()),
-            }
-        ]
-
-        response = ollama.chat(
-            model="gemma4",
-            messages=messages,
-            logprobs=True,
-            top_logprobs=3,
-        )
-
-
-        print("Chat response:", response["message"]["content"])
-
-        voice_button(
-            response.get("logprobs") or [],
-            "Chat logprobs"
-        )
-
-    # Call this function when needed
-    sachi()
-
-    def sachin():
-        messages = [
-            {
-                "role": "user",
-                "content": str(sach.get()),
-            }
-        ]
-
-        response = generate('deepseek-r1',token, think=True)
-
-        print('Thinking:\n========\n\n' + response.thinking)
-        print('\nResponse:\n========\n\n' + response.response)
-
-        print("Chat response:", response["message"]["content"])
-
-        voice_button(
-            response.get("logprobs") or [],
-            "Chat logprobs"
-        )
-        
-    # Call this function when needed
-    sachin()
-# update options
-def print_apps(event):
-
-    print("Checking for app updates...")
-
-    subprocess.run(["winget", "upgrade"])
-
-    choice = input("Do you want to install all available updates? (yes/no): ")
-
-    if choice.lower() == "yes":
-        subprocess.run([
-            "winget", "upgrade",
-            "--all",
-            "--accept-source-agreements",
-            "--accept-package-agreements"
-            ])
-
-        print("App update process completed.")
-    else:
-
-        app_name = input("Enter the app name to update: ")
-
-        print("Checking for updates for:", app_name)
-
-        subprocess.run([
-            "winget",
-            "upgrade",
-            "--name", app_name
-        ])
-
-        choice = input("Do you want to install this update? (yes/no): ")
-
-        if choice.lower() == "yes":
-            subprocess.run(
-                [
-                    "winget",
-                    "upgrade",
-                    "--name", app_name,
-                    "--accept-source-agreements",
-                    "--accept-package-agreements"
-                ])
-            print(app_name, "has been updated.")
-        else:
-            print("Update cancelled.")
-           
-    def print_os(event):
+    status_label = tk.Label(
+        content_frame,
+        text="Ready for input",
+        bg="#101010",
+        fg="white",
+        font=("Arial", 12),
+    )
+    status_label.pack(pady=(10, 0))
 
 
-        print("Checking for Windows updates...")
+def print_apps(event=None):
+    clear_content()
+    info = tk.Label(
+        content_frame,
+        text="App updater",
+        bg="#101010",
+        fg="white",
+        font=("Arial", 18, "bold"),
+    )
+    info.pack(pady=20)
 
-        subprocess.run([
-            "powershell",
-            "-Command",
-            "Install-Module PSWindowsUpdate -Force -Scope CurrentUser"
-            ])
+    if subprocess is None or os.name != "nt":
+        tk.Label(
+            content_frame,
+            text="Windows update helpers are unavailable in this environment.",
+            bg="#101010",
+            fg="white",
+            wraplength=600,
+        ).pack(pady=10)
+        return
 
-        subprocess.run([
-            "powershell",
-            "-Command",
-            "Import-Module PSWindowsUpdate; Get-WindowsUpdate -Install -AcceptAll -AutoReboot"
-        ])
+    text_box = tk.Text(content_frame, height=14, width=80, bg="#202020", fg="white")
+    text_box.pack(padx=20, pady=10)
+    text_box.insert("1.0", "This feature would run winget update commands on Windows.\n")
 
-    print("Windows update process completed.")
-    # apps button
-    apps =tk.button(root,Text="APPS",cursor="hand2",fg="yellow",font=("arial",14))
-    apps.pack(side="left",paddle=10)
-    apps.bind("<BUTTON>",print_apps)
-    # os button
-    os=tk.button(root,Text="HTML",cursor="hand2",fg="yellow",font=("arial",14))
-    os.pack(side="left",paddle=10)
-    os.bind("<BUTTON>",print_os)
-    
-def timer(event):
-    def print_ok(event):
-        print(entry,"-SECOND TIMER STARTED!")
 
+def zealfire(event=None):
+    clear_content()
+    label = tk.Label(
+        content_frame,
+        text="ZEALFIRE",
+        bg="#101010",
+        fg="white",
+        font=("Arial", 18, "bold"),
+    )
+    label.pack(pady=20)
+
+    prompt = tk.Entry(content_frame, width=60, font=("Arial", 12))
+    prompt.pack(pady=10)
+    prompt.insert(0, "Ask ZEALFIRE:")
+
+    def ask():
+        text = prompt.get().strip()
+        if not text or text == "Ask ZEALFIRE:":
+            messagebox.showinfo("ZEALFIRE", "Please enter a message.")
+            return
+        messagebox.showinfo("ZEALFIRE", run_ollama_query(text))
+
+    btn = tk.Button(content_frame, text="Ask", command=ask, bg="#16D626", fg="white")
+    btn.pack(pady=10)
+
+
+def timer(event=None):
+    clear_content()
+    timer_win = tk.Toplevel(root)
+    timer_win.title("TIMER")
+    timer_win.configure(bg="black")
+    timer_win.geometry("400x200")
+
+    tk.Label(
+        timer_win,
+        text="SET TIMING FOR ALARM OF:",
+        fg="yellow",
+        bg="black",
+        font=("arial", 14),
+    ).pack(pady=10)
+
+    entry = tk.Entry(timer_win, font=("Arial", 14), justify="center", bd=2)
+    entry.pack(pady=5)
+    entry.insert(0, "30")
+
+    result = tk.Label(timer_win, text="", fg="yellow", bg="black", font=("arial", 12))
+    result.pack(pady=10)
+
+    def start_timer():
         try:
-            seconds=int(oj.get())
-            result.config(text=f"You entered {seconds} seconds!")
-
+            seconds = int(entry.get())
         except ValueError:
             result.config(text="Please enter a whole number!")
+            return
 
-        for seconds in range(s, 0, -1):
-            print("Time remaining:", seconds)
-         
-            # Play a short tick sound
-            winsound.Beep(1000, 100)
+        result.config(text=f"Timer started for {seconds} seconds")
+        for remaining in range(seconds, 0, -1):
+            time.sleep(1)
+            if winsound is not None:
+                winsound.Beep(1000, 100)
+        result.config(text="TIME'S UP!")
+        if winsound is not None:
+            winsound.Beep(1500, 700)
 
-            # Wait approximately one second in total per tick
-            time.sleep(0.9)
+    tk.Button(
+        timer_win,
+        text="OK",
+        cursor="hand2",
+        fg="yellow",
+        font=("arial", 14),
+        command=lambda: threading.Thread(target=start_timer, daemon=True).start(),
+    ).pack(pady=10)
 
-        print("TIME'S UP!")
 
-        # Play a longer sound when time is up
-        winsound.Beep(1500, 700)
-
-    root=tk.Tk()
-    root.configure(bg="black")
-    root.title("TIMER:")
-    root.geometry("900x1080")
-
-    g=tk.Label(root,text="Timer",fg="yellow",bg="black",font=("arial",14))
-    g.pack(side="left",ipadx=5,ipady=5)
-
-    labelx=tk.Label(root,text="SET TIMING FOR ALARM OF:",fg="yellow",bg="black",font=("arial",14))
-    labelx.pack(side="left",ipadx=5,ipady=7)
-
-    oj=tk.Entry(root,font=("Arial",14),justify="center",text="enter time limit:",bd=2)
-    oj.pack(side="left",ipadx=5,ipady=9)
-
-    ok=tk.Button(root,text="OK",cursor="hand2",fg="yellow",font=("arial",14),pady=0,padx=10,command=print_ok)
-    ok.pack(side="right",ipadx=12,ipady=12)
-
-def caller():
-    # Audio Configuration Parameters
-    FORMAT = pyaudio.paInt16
-    CHANNELS = 1
-    RATE = 16000          # 16kHz sample rate (good balance for voice clarity and bandwidth)
-    CHUNK = 512           # Small chunk size for low-latency streaming
+def caller(event=None):
+    clear_content()
+    if pyaudio is None:
+        messagebox.showerror("Missing dependency", "PyAudio is not installed.")
+        return
 
     class VoiceCallApp:
-        def __init__(self, root):
-            self.root = root
-            self.root.title("Python Native VoIP Call")
-            self.root.geometry("350x300")
-            self.root.resizable(False, False)
+        def __init__(self, master):
+            self.master = master
+            self.master.title("Python Native VoIP Call")
+            self.master.geometry("350x300")
+            self.master.resizable(False, False)
 
             self.p = pyaudio.PyAudio()
             self.is_in_call = False
@@ -431,28 +326,32 @@ def caller():
             self.stream_out = None
             self.audio_thread = None
 
-            # --- UI Layout ---
-            tk.Label(root, text="Internet Voice Dialer", font=("Arial", 14, "bold")).pack(pady=15)
-
-            tk.Label(root, text="Destination IP / Host:").pack()
-            self.host_entry = tk.Entry(root, width=25, font=("Arial", 11))
+            tk.Label(master, text="Internet Voice Dialer", font=("Arial", 14, "bold")).pack(pady=15)
+            tk.Label(master, text="Destination IP / Host:").pack()
+            self.host_entry = tk.Entry(master, width=25, font=("Arial", 11))
             self.host_entry.pack(pady=5)
-            self.host_entry.insert(0, "127.0.0.1") # Default placeholder for testing
+            self.host_entry.insert(0, "127.0.0.1")
 
-            tk.Label(root, text="Port:").pack()
-            self.port_entry = tk.Entry(root, width=10, font=("Arial", 11))
+            tk.Label(master, text="Port:").pack()
+            self.port_entry = tk.Entry(master, width=10, font=("Arial", 11))
             self.port_entry.pack(pady=5)
             self.port_entry.insert(0, "50007")
 
-            self.status_label = tk.Label(root, text="Status: Idle", fg="gray", font=("Arial", 10))
+            self.status_label = tk.Label(master, text="Status: Idle", fg="gray", font=("Arial", 10))
             self.status_label.pack(pady=10)
 
-            self.call_button = tk.Button(root, text="Start Outgoing Call", bg="green", fg="white", 
-                                         font=("Arial", 10, "bold"), width=18, command=self.toggle_call)
+            self.call_button = tk.Button(
+                master,
+                text="Start Outgoing Call",
+                bg="green",
+                fg="white",
+                font=("Arial", 10, "bold"),
+                width=18,
+                command=self.toggle_call,
+            )
             self.call_button.pack(pady=10)
 
-            # Handle window close cleanup
-            self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+            self.master.protocol("WM_DELETE_WINDOW", self.on_close)
 
         def toggle_call(self):
             if not self.is_in_call:
@@ -472,74 +371,67 @@ def caller():
                 messagebox.showerror("Error", "Please enter a target address.")
                 return
 
-            self.status_label.config(text="Status: Connecting...", fg="blue")
-            self.root.update()
-
             try:
-                # Initialize Network Socket (TCP for stable stream delivery)
                 self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.sock.connect((dest_ip, dest_port))
-                
                 self.is_in_call = True
                 self.call_button.config(text="End Call", bg="red")
                 self.status_label.config(text="Status: In Call (Connected)", fg="green")
-
-                # Start Full-Duplex Audio Worker Thread
                 self.audio_thread = threading.Thread(target=self.audio_stream_loop, daemon=True)
                 self.audio_thread.start()
-
-            except Exception as e:
-                messagebox.showerror("Connection Failed", str(e))
+            except Exception as exc:
+                messagebox.showerror("Connection Failed", str(exc))
                 self.status_label.config(text="Status: Call Failed", fg="red")
                 self.sock = None
                 self.is_in_call = False
 
         def audio_stream_loop(self):
+            stream_in = self.p.open(
+                format=pyaudio.paInt16,
+                channels=1,
+                rate=16000,
+                input=True,
+                frames_per_buffer=512,
+            )
+            stream_out = self.p.open(
+                format=pyaudio.paInt16,
+                channels=1,
+                rate=16000,
+                output=True,
+                frames_per_buffer=512,
+            )
             try:
-                # Open PyAudio Streams
-                self.stream_in = self.p.open(format=FORMAT, channels=CHANNELS, rate=RATE, 
-                                             input=True, frames_per_buffer=CHUNK)
-                self.stream_out = self.p.open(format=FORMAT, channels=CHANNELS, rate=RATE, 
-                                              output=True, frames_per_buffer=CHUNK)
-
                 while self.is_in_call:
-                    # 1. Capture microphone audio and send over internet socket
                     try:
-                        data_to_send = self.stream_in.read(CHUNK, exception_on_overflow=False)
+                        data_to_send = stream_in.read(512, exception_on_overflow=False)
                         self.sock.sendall(data_to_send)
                     except Exception:
                         break
 
-                    # 2. Receive audio data from internet socket and play to speakers
                     try:
-                        self.sock.settimeout(0.05) # Prevent blocking indefinitely
-                        incoming_data = self.sock.recv(CHUNK * 2) # 2 bytes per sample for paInt16
+                        self.sock.settimeout(0.05)
+                        incoming_data = self.sock.recv(1024)
                         if incoming_data:
-                            self.stream_out.write(incoming_data)
+                            stream_out.write(incoming_data)
                     except socket.timeout:
                         continue
                     except Exception:
                         break
             finally:
-                self.cleanup_audio()
-
-        def cleanup_audio(self):
-            if self.stream_in:
                 try:
-                    self.stream_in.stop_stream()
-                    self.stream_in.close()
-                except:
+                    stream_in.stop_stream()
+                    stream_in.close()
+                except Exception:
                     pass
-            if self.stream_out:
                 try:
-                    self.stream_out.stop_stream()
-                    self.stream_out.close()
-                except:
+                    stream_out.stop_stream()
+                    stream_out.close()
+                except Exception:
                     pass
-            if self.sock:
                 try:
-                    self.sock.close()
-                except:
+                    if self.sock:
+                        self.sock.close()
+                except Exception:
                     pass
 
         def end_call(self):
@@ -547,86 +439,47 @@ def caller():
             if self.sock:
                 try:
                     self.sock.close()
-                except:
+                except Exception:
                     pass
             self.call_button.config(text="Start Outgoing Call", bg="green")
             self.status_label.config(text="Status: Call Ended", fg="gray")
 
         def on_close(self):
             self.is_in_call = False
-            self.cleanup_audio()
+            self.end_call()
             self.p.terminate()
-            self.root.destroy()
+            self.master.destroy()
 
-    root = tk.Tk()
-    app = VoiceCallApp(root)
-    root.mainloop()
+    call_window = tk.Toplevel(root)
+    VoiceCallApp(call_window)
 
-# To run the application, simply call:
-caller()
 
-def zealfire(event):
+def watch(event=None):
+    clear_content()
+    if FastAPI is None or uvicorn is None:
+        messagebox.showerror("Missing dependency", "FastAPI or uvicorn is not installed.")
+        return
 
-    messages = [
-        {
-            "role": "user",
-            "content": str(sach.get()),
-        }
-    ]
-
-    response1 = ollama.chat(
-        model="gemma4",
-        messages=messages,
-        logprobs=True,
-        top_logprobs=3,
-    )
-
-    print("Chat response:", response["message"]["content"])
-
-    voice_button(
-        response.get("logprobs") or [],
-        "Chat logprobs"
-    )
-
-    response2 = generate('deepseek-r1',token, think=True)
-
-    print('Thinking:\n========\n\n' + response.thinking)
-    print('\nResponse:\n========\n\n' + response.response)
-
-    print("Chat response:", response["message"]["content"])
-
-    voice_button(
-        response.get("logprobs") or [],
-        "Chat logprobs"
-    )
-    response=response1+response2
-    # Call this function when needed
-    zealfire()
-
-def watch(event):
-     # Initialize FastAPI App
     app = FastAPI(title="Python Netflix Clone Backend", version="1.0")
+    upload_dir = "media_storage/videos"
+    thumb_dir = "media_storage/thumbnails"
+    os.makedirs(upload_dir, exist_ok=True)
+    os.makedirs(thumb_dir, exist_ok=True)
 
-    # --- Directory Setup for Media Simulation ---
-    UPLOAD_DIR = "media_storage/videos"
-    THUMB_DIR = "media_storage/thumbnails"
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    os.makedirs(THUMB_DIR, exist_ok=True)
-
-    # Mount static directory to serve video files & HLS playlists (.m3u8 / .ts segments)
     app.mount("/media", StaticFiles(directory="media_storage"), name="media")
 
-    # --- In-Memory Database Simulation ---
     fake_db_users = {
-        "demo_user": {"username": "demo_user", "password": "password123", "email": "demo@netclone.com"}
+        "demo_user": {
+            "username": "demo_user",
+            "password": "password123",
+            "email": "demo@netclone.com",
+        }
     }
-
     fake_db_categories = [
         {"id": 1, "name": "Action"},
         {"id": 2, "name": "Sci-Fi"},
-        {"id": 3, "name": "Documentary"}
+        {"id": 3, "name": "Documentary"},
     ]
-
     fake_db_videos = [
         {
             "id": 1,
@@ -634,13 +487,11 @@ def watch(event):
             "description": "A thrilling journey through a neon-lit futuristic metropolis.",
             "category_id": 2,
             "thumbnail_url": "/media/thumbnails/sample_thumb.jpg",
-            "playlist_url": "/media/videos/sample_hls/playlist.m3u8"
+            "playlist_url": "/media/videos/sample_hls/playlist.m3u8",
         }
     ]
-
     fake_db_watch_history = []
 
-    # --- Pydantic Data Validation Models ---
     class UserLogin(BaseModel):
         username: str
         password: str
@@ -659,69 +510,69 @@ def watch(event):
         watched_seconds: int
         completed: bool = False
 
-    # --- API Routes ---
-    @app.get("/", tags=["General"])
+    @app.get("/")
     def root_status():
         return {"message": "Welcome to the Python Netflix Clone API. Visit /docs for interactive Swagger UI."}
 
-    @app.post("/api/auth/login", tags=["Authentication"])
+    @app.post("/api/auth/login")
     def login(user: UserLogin):
         db_user = fake_db_users.get(user.username)
         if not db_user or db_user["password"] != user.password:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect username or password"
+                detail="Incorrect username or password",
             )
-        return {"access_token": f"fake-jwt-token-for-{user.username}", "token_type": "bearer"}
+        return {
+            "access_token": f"fake-jwt-token-for-{user.username}",
+            "token_type": "bearer",
+        }
 
-    @app.get("/api/categories", tags=["Catalog"])
+    @app.get("/api/categories")
     def get_categories():
         return fake_db_categories
 
-    @app.get("/api/videos", response_model=List[VideoResponse], tags=["Catalog"])
-    def get_videos(category_id: Optional[int] = None):
+    @app.get("/api/videos", response_model=list[VideoResponse])
+    def get_videos(category_id: int | None = None):
         if category_id:
-            filtered = [v for v in fake_db_videos if v["category_id"] == category_id]
-            return filtered
+            return [v for v in fake_db_videos if v["category_id"] == category_id]
         return fake_db_videos
 
-    @app.get("/api/videos/{video_id}", response_model=VideoResponse, tags=["Catalog"])
+    @app.get("/api/videos/{video_id}", response_model=VideoResponse)
     def get_video_detail(video_id: int):
         for video in fake_db_videos:
             if video["id"] == video_id:
                 return video
         raise HTTPException(status_code=404, detail="Video not found")
 
-    @app.post("/api/watch-history", tags=["User Activity"])
+    @app.post("/api/watch-history")
     def update_watch_history(history: WatchHistorySchema):
         for record in fake_db_watch_history:
             if record["username"] == history.username and record["video_id"] == history.video_id:
                 record["watched_seconds"] = history.watched_seconds
                 record["completed"] = history.completed
                 return {"status": "success", "message": "Watch history updated."}
-        
         fake_db_watch_history.append(history.dict())
         return {"status": "success", "message": "Watch history created."}
 
-    @app.post("/api/admin/upload-video", tags=["Admin Content Management"])
+    @app.post("/api/admin/upload-video")
     async def upload_video(
         title: str = Form(...),
         description: str = Form(...),
         category_id: int = Form(...),
         video_file: UploadFile = File(...),
-        thumbnail_file: UploadFile = File(...)
+        thumbnail_file: UploadFile = File(...),
     ):
         new_id = len(fake_db_videos) + 1
-        
-        thumb_path = os.path.join(THUMB_DIR, f"{new_id}_{thumbnail_file.filename}")
+
+        thumb_path = os.path.join(thumb_dir, f"{new_id}_{thumbnail_file.filename}")
         with open(thumb_path, "wb") as buffer:
-            shutil.copyfileobj(thumbnail_file.file, buffer)
-            
-        vid_folder = os.path.join(UPLOAD_DIR, f"video_{new_id}")
+            buffer.write(await thumbnail_file.read())
+
+        vid_folder = os.path.join(upload_dir, f"video_{new_id}")
         os.makedirs(vid_folder, exist_ok=True)
         vid_path = os.path.join(vid_folder, video_file.filename)
         with open(vid_path, "wb") as buffer:
-            shutil.copyfileobj(video_file.file, buffer)
+            buffer.write(await video_file.read())
 
         new_video = {
             "id": new_id,
@@ -729,18 +580,49 @@ def watch(event):
             "description": description,
             "category_id": category_id,
             "thumbnail_url": f"/media/thumbnails/{new_id}_{thumbnail_file.filename}",
-            "playlist_url": f"/media/videos/video_{new_id}/{video_file.filename}"
+            "playlist_url": f"/media/videos/video_{new_id}/{video_file.filename}",
         }
         fake_db_videos.append(new_video)
-        
         return {"status": "success", "video_id": new_id, "data": new_video}
 
-    # --- Start Server ---
-    print("Starting Python Netflix Clone Backend Server...")
-    print("Access interactive API documentation at: http://127.0.0.1:8000/docs")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    def server_runner():
+        uvicorn.run(app, host="127.0.0.1", port=8000, log_level="warning")
 
-# To run the application, call:
-# sachin()
-#keep window running
+    threading.Thread(target=server_runner, daemon=True).start()
+    tk.Label(
+        content_frame,
+        text="Entertainment backend started at http://127.0.0.1:8000/docs",
+        bg="#101010",
+        fg="white",
+        wraplength=600,
+    ).pack(pady=20)
+
+
+def build_nav():
+    buttons = [
+        ("HOME", home_s),
+        ("UPDATE", print_apps),
+        ("ZEALFIRE", zealfire),
+        ("CALL", caller),
+        ("TIMER", timer),
+        ("ENTERTAINMENT", watch),
+    ]
+    for text, command in buttons:
+        btn = tk.Button(
+            nav_frame,
+            text=text,
+            fg="blue",
+            bd=3,
+            font=("Bold", 20),
+            justify="top",
+            cursor="hand2",
+            bg="black",
+            activebackground="black",
+            command=command,
+        )
+        btn.pack(side="left", ipadx=10, ipady=15, padx=5)
+
+
+build_nav()
+home_s()
 root.mainloop()
